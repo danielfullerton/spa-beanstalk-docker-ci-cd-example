@@ -1,0 +1,62 @@
+name: Deploy Application
+
+on:
+  push:
+    # List all the branches you want to trigger this CI workflow
+    branches:
+      - development
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v2
+
+      # Sets up node & npm capabilities
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v1
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      # install dependencies
+      - run: npm install
+
+      # run our app's build command
+      - name: Run ng build
+        run: npm run build -- --prod --optimization=false
+
+      # package our entire project folder except for node_modules (they are bundled so we can skip them)
+      - name: Create zip
+        run: zip -r deploy.zip . -x ./node_modules/\*
+
+      # create a random version id for this build
+      - name: Set UUID
+        id: generate-uuid
+        uses: filipstefansson/uuid-action@v1
+        with:
+          name: ${{ github.sha }}
+
+      # provides convenient environment variables for doing things with Git
+      - name: Inject slug/short variables
+        uses: rlespinasse/github-slug-action@v3.x
+
+      # if we are on "development" branch, we will deploy to our development environment. You can add as many of these "if" blocks as needed for different branches.
+      - if: env.GITHUB_REF_SLUG == 'development'
+        name: Deploy to development
+        uses: einaregilsson/beanstalk-deploy@v14
+        with:
+          # you should have these 2 secrets defined in your Github repo, and they should point to an AWS IAM account with permissions to deploy to Beanstalk
+          aws_access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws_secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          # todo: replace
+          application_name: "[ENTER YOUR APPLICATION NAME HERE]"
+          # todo: replace
+          environment_name: "[ENTER YOUR ENVIRONMENT NAME HERE]"
+          version_label: ${{ steps.generate-uuid.outputs.uuid }}
+          # todo: replace
+          region: "[ENTER YOUR REGION HERE]"
+          deployment_package: deploy.zip
